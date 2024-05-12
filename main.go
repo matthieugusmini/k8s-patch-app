@@ -5,11 +5,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"k8s-patch-app/k8s"
 	"os"
+	"os/signal"
 	"path/filepath"
 
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
@@ -24,18 +24,25 @@ func main() {
 }
 
 func run(ctx context.Context) error {
+	// Has to be done here as the defer statement wouldn't get executed in the
+	// main function.
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
+	defer stop()
+
 	var (
-		kubeconfig *string
-		name       *string
-		patch      *string
+		kubeconfigPath *string
+		name           *string
+		patch          *string
 	)
+	// https://github.com/kubernetes/client-go/blob/master/examples/out-of-cluster-client-configuration/main.go#L44
+	if home := homedir.HomeDir(); home != "" {
+		kubeconfigPath = flag.String("k", filepath.Join(home, ".kube", "config"), "(optional) Absolute path to the kubeconfig file")
+	} else {
+		kubeconfigPath = flag.String("k", "", "Absolute path to the kubeconfig file")
+	}
 	name = flag.String("n", "", "Deployment name to patch")
 	patch = flag.String("p", "", "JSON patch")
-	if home := homedir.HomeDir(); home != "" {
-		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-	} else {
-		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
-	}
+
 	flag.Parse()
 
 	if *name == "" {
@@ -45,9 +52,9 @@ func run(ctx context.Context) error {
 		return errors.New("no JSON patch to apply")
 	}
 
-	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfigPath)
 	if err != nil {
-		return fmt.Errorf("failed to build configs from %s: %w", *kubeconfig, err)
+		return fmt.Errorf("failed to build configs from %s: %w", *kubeconfigPath, err)
 	}
 
 	clientset, err := kubernetes.NewForConfig(config)
@@ -55,13 +62,6 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("failed to create a new Clientset for the kube config: %w", err)
 	}
 
-	_, err = clientset.
-		AppsV1().
-		Deployments("default").
-		Patch(ctx, *name, types.JSONPatchType, []byte(*patch), v1.PatchOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to patch the deployment: %w", err)
-	}
-
-	return nil
+	jsonPatcher := k8s.NewJSONPatcher(clientset)
+	return jsonPatcher.PatchDeployment(ctx, "default", *name, []byte(*patch))
 }
