@@ -1,4 +1,4 @@
-# Kubernetes JSON Patcher
+# k8s-patch-app
 
 This Go application provides functionality to patch Kubernetes deployments using JSON patches. It utilizes the Kubernetes client library.
 
