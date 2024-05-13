@@ -54,3 +54,7 @@ Example:
 ## 📝 Description
 
 The application reads the Kubernetes configuration from the provided kubeconfig file or uses the default location (`~/.kube/config`). It then patches the specified deployment with the provided JSON patch.
+
+## To-Do List
+
+- [ ] Add E2E tests using the [Kubernetes E2E framework](https://github.com/kubernetes-sigs/e2e-framework)
